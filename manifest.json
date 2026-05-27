@@ -1,0 +1,17 @@
+{
+  "name": "World Clock",
+  "short_name": "World Clock",
+  "description": "Multi-timezone world clock with time scrubbing",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f7f7f5",
+  "theme_color": "#1a1a1a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

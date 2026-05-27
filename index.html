@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="World Clock">
+<meta name="theme-color" content="#f7f7f5">
+<link rel="manifest" href="manifest.json">
+<title>World Clock</title>
+<!-- Generate and inject the home-screen icon via canvas so iOS picks it up -->
+<script>
+(function(){
+  try {
+    var c = document.createElement('canvas');
+    c.width = c.height = 180;
+    var ctx = c.getContext('2d');
+    // Rounded dark background
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath();
+    var r = 36;
+    ctx.moveTo(r,0); ctx.lineTo(180-r,0);
+    ctx.arc(180-r,r,r,-Math.PI/2,0);
+    ctx.lineTo(180,180-r);
+    ctx.arc(180-r,180-r,r,0,Math.PI/2);
+    ctx.lineTo(r,180);
+    ctx.arc(r,180-r,r,Math.PI/2,Math.PI);
+    ctx.lineTo(0,r);
+    ctx.arc(r,r,r,Math.PI,-Math.PI/2);
+    ctx.closePath(); ctx.fill();
+    // Clock ring
+    ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(90,90,62,0,Math.PI*2); ctx.stroke();
+    // Tick marks
+    for(var i=0;i<12;i++){
+      var a=(i/12)*Math.PI*2-Math.PI/2;
+      var maj=i%3===0;
+      ctx.strokeStyle=maj?'rgba(255,255,255,0.5)':'rgba(255,255,255,0.2)';
+      ctx.lineWidth=maj?2:1;
+      var r1=maj?52:57;
+      ctx.beginPath();
+      ctx.moveTo(90+Math.cos(a)*r1,90+Math.sin(a)*r1);
+      ctx.lineTo(90+Math.cos(a)*62,90+Math.sin(a)*62);
+      ctx.stroke();
+    }
+    // Hour hand (10 o'clock)
+    var hA=(10/12)*Math.PI*2-Math.PI/2;
+    ctx.strokeStyle='white'; ctx.lineWidth=3.5; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(90,90);
+    ctx.lineTo(90+Math.cos(hA)*36,90+Math.sin(hA)*36); ctx.stroke();
+    // Minute hand (2 o'clock / 10-min mark)
+    var mA=(2/12)*Math.PI*2-Math.PI/2;
+    ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.moveTo(90,90);
+    ctx.lineTo(90+Math.cos(mA)*50,90+Math.sin(mA)*50); ctx.stroke();
+    // Center dot
+    ctx.fillStyle='white';
+    ctx.beginPath(); ctx.arc(90,90,4,0,Math.PI*2); ctx.fill();
+    // Inject as apple-touch-icon
+    var link=document.createElement('link');
+    link.rel='apple-touch-icon'; link.href=c.toDataURL('image/png');
+    document.head.appendChild(link);
+  } catch(e){}
+})();
+</script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; background: #f7f7f5; }
+body { font-family: -apple-system, 'SF Pro Display', sans-serif; overscroll-behavior: none; }
+:root {
+  --c-bg: #f7f7f5;
+  --c-card: #ffffff;
+  --c-accent: #1a1a1a;
+  --c-border: rgba(0,0,0,0.1);
+  --c-muted: #888;
+  --c-text: #1a1a1a;
+  --c-pill: #efefed;
+}
+.app {
+  max-width: 430px;
+  margin: 0 auto;
+  background: var(--c-bg);
+  min-height: 100dvh;
+  padding: 56px 16px 40px;
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.app-title {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.6px;
+  color: var(--c-text);
+}
+.topbar-actions { display: flex; gap: 8px; align-items: center; }
+.fmt-toggle {
+  display: flex;
+  background: var(--c-pill);
+  border-radius: 20px;
+  padding: 3px;
+}
+.fmt-btn {
+  border: none;
+  background: none;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 16px;
+  cursor: pointer;
+  color: var(--c-muted);
+  transition: all 0.18s;
+  font-family: inherit;
+}
+.fmt-btn.active {
+  background: white;
+  color: var(--c-text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+.add-btn {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: 1.5px solid var(--c-border);
+  background: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: var(--c-muted);
+  transition: all 0.15s;
+  font-family: inherit;
+  line-height: 1;
+}
+.add-btn:hover { border-color: var(--c-text); color: var(--c-text); }
+
+.cards { display: flex; flex-direction: column; gap: 10px; }
+.tz-card {
+  background: var(--c-card);
+  border-radius: 18px;
+  border: 1px solid var(--c-border);
+  padding: 16px 18px 14px;
+  cursor: pointer;
+  transition: border-color 0.18s, transform 0.18s, background 0.18s;
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.tz-card.active-card {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+}
+.tz-card:active:not(.active-card) { transform: scale(0.98); }
+.card-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 6px; }
+.card-city { font-size: 13px; font-weight: 500; color: var(--c-muted); letter-spacing: 0.2px; }
+.card-tz { font-size: 11px; color: var(--c-muted); opacity: 0.7; margin-top: 1px; }
+.active-card .card-city, .active-card .card-tz { color: rgba(255,255,255,0.65); }
+.card-time {
+  font-size: 42px;
+  font-weight: 300;
+  letter-spacing: -2px;
+  color: var(--c-text);
+  line-height: 1;
+}
+.active-card .card-time { color: white; }
+.card-period { font-size: 17px; font-weight: 400; margin-left: 4px; letter-spacing: 0; }
+.card-day { font-size: 11px; color: var(--c-muted); margin-top: 5px; }
+.active-card .card-day { color: rgba(255,255,255,0.5); }
+.remove-btn {
+  position: absolute; top: 14px; right: 14px;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.07);
+  color: var(--c-muted);
+  font-size: 15px;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-family: inherit;
+}
+.active-card .remove-btn { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.8); }
+.tz-card:hover .remove-btn { display: flex; }
+
+.slider-section {
+  margin-top: 14px;
+  background: var(--c-card);
+  border-radius: 18px;
+  border: 1px solid var(--c-border);
+  padding: 16px 18px;
+}
+.slider-label {
+  font-size: 12px;
+  color: var(--c-muted);
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.slider-label span { font-size: 13px; color: var(--c-text); font-weight: 500; }
+input[type=range].time-slider {
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  outline: none;
+  background: linear-gradient(to right, var(--c-text) 0%, var(--c-text) var(--pct, 50%), #e0e0de var(--pct, 50%), #e0e0de 100%);
+}
+input[type=range].time-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--c-text);
+  border: 3px solid white;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.22);
+  cursor: pointer;
+}
+input[type=range].time-slider::-moz-range-thumb {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--c-text);
+  border: 3px solid white;
+  cursor: pointer;
+}
+
+/* PICKER */
+.picker-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.32); z-index: 100;
+  align-items: flex-end; justify-content: center;
+}
+.picker-overlay.open { display: flex; }
+.picker-sheet {
+  background: white;
+  border-radius: 22px 22px 0 0;
+  width: 100%; max-width: 430px;
+  padding: 0 0 env(safe-area-inset-bottom, 24px);
+  overflow: hidden;
+}
+.picker-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--c-border);
+}
+.picker-header h3 { font-size: 15px; font-weight: 600; color: var(--c-text); font-family: inherit; }
+.picker-done {
+  border: none; background: none;
+  font-size: 15px; font-weight: 600; color: #007AFF;
+  cursor: pointer; padding: 4px 0; font-family: inherit;
+}
+.picker-cancel {
+  border: none; background: none;
+  font-size: 15px; color: var(--c-muted);
+  cursor: pointer; padding: 4px 0; font-family: inherit;
+}
+.picker-sub { font-size: 12px; color: var(--c-muted); text-align: center; padding: 8px 0 0; }
+.wheels { display: flex; justify-content: center; align-items: center; padding: 0 8px; }
+.wheel-wrap { flex: 1; position: relative; height: 220px; overflow: hidden; cursor: grab; }
+.wheel-wrap:active { cursor: grabbing; }
+.wheel-fade-top {
+  position: absolute; top: 0; left: 0; right: 0; height: 84px;
+  background: linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%);
+  z-index: 2; pointer-events: none;
+}
+.wheel-fade-bot {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 84px;
+  background: linear-gradient(to top, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%);
+  z-index: 2; pointer-events: none;
+}
+.wheel-selector {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  left: 4px; right: 4px; height: 44px;
+  border-top: 1px solid rgba(0,0,0,0.15);
+  border-bottom: 1px solid rgba(0,0,0,0.15);
+  z-index: 1; pointer-events: none;
+}
+.wheel-list { position: absolute; top: 0; left: 0; right: 0; will-change: transform; }
+.wheel-item {
+  height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 300;
+  color: var(--c-text);
+}
+.wheel-sep {
+  font-size: 26px; font-weight: 300;
+  padding: 0 2px;
+  display: flex; align-items: center; justify-content: center;
+  height: 44px;
+  position: relative; top: 0; flex-shrink: 0;
+  color: var(--c-text);
+}
+
+/* TZ PICKER */
+.tz-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.32); z-index: 200;
+  align-items: flex-end; justify-content: center;
+}
+.tz-overlay.open { display: flex; }
+.tz-sheet {
+  background: white;
+  border-radius: 22px 22px 0 0;
+  width: 100%; max-width: 430px;
+  max-height: 72vh;
+  display: flex; flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.tz-header {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--c-border);
+  display: flex; justify-content: space-between; align-items: center;
+  flex-shrink: 0;
+}
+.tz-header h3 { font-size: 15px; font-weight: 600; color: var(--c-text); font-family: inherit; }
+.tz-close {
+  border: none; background: none; font-size: 22px;
+  color: var(--c-muted); cursor: pointer; line-height: 1; font-family: inherit;
+}
+.tz-search { padding: 10px 16px; border-bottom: 1px solid var(--c-border); flex-shrink: 0; }
+.tz-search input {
+  width: 100%; padding: 9px 14px;
+  border-radius: 10px; border: 1px solid var(--c-border);
+  font-size: 15px; outline: none;
+  background: var(--c-bg); font-family: inherit; color: var(--c-text);
+}
+.tz-list { overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; }
+.tz-option {
+  padding: 14px 20px; border-bottom: 1px solid rgba(0,0,0,0.06);
+  cursor: pointer; display: flex;
+  justify-content: space-between; align-items: center;
+}
+.tz-option:active { background: var(--c-bg); }
+.tz-option-name { font-size: 15px; color: var(--c-text); font-weight: 500; }
+.tz-option-sub { font-size: 12px; color: var(--c-muted); margin-top: 2px; }
+.tz-option-time { font-size: 14px; color: var(--c-muted); }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="topbar">
+    <div class="app-title">World Clock</div>
+    <div class="topbar-actions">
+      <div class="fmt-toggle">
+        <button class="fmt-btn active" id="btn12" onclick="setFormat(12)">12h</button>
+        <button class="fmt-btn" id="btn24" onclick="setFormat(24)">24h</button>
+      </div>
+      <button class="add-btn" onclick="openTzPicker()" title="Add timezone">+</button>
+    </div>
+  </div>
+  <div class="cards" id="cards-container"></div>
+  <div class="slider-section">
+    <div class="slider-label">Scrub time <span id="slider-label">12:00</span></div>
+    <input type="range" class="time-slider" id="time-slider" min="0" max="1439" value="720" step="1" oninput="onSlider(this.value)">
+  </div>
+</div>
+
+<!-- Time Picker -->
+<div class="picker-overlay" id="picker-overlay" onclick="if(event.target===this)closePicker()">
+  <div class="picker-sheet">
+    <div class="picker-header">
+      <button class="picker-cancel" onclick="closePicker()">Cancel</button>
+      <h3 id="picker-title">Set Time</h3>
+      <button class="picker-done" onclick="donePicker()">Done</button>
+    </div>
+    <p class="picker-sub">Drag to set time</p>
+    <div class="wheels" id="wheels"></div>
+  </div>
+</div>
+
+<!-- TZ Picker -->
+<div class="tz-overlay" id="tz-overlay" onclick="if(event.target===this)closeTzPicker()">
+  <div class="tz-sheet">
+    <div class="tz-header">
+      <h3>Add Timezone</h3>
+      <button class="tz-close" onclick="closeTzPicker()">×</button>
+    </div>
+    <div class="tz-search">
+      <input type="text" id="tz-search-input" placeholder="Search city or timezone…" oninput="filterTz(this.value)">
+    </div>
+    <div class="tz-list" id="tz-list"></div>
+  </div>
+</div>
+
+<script>
+const ALL_TZ = [
+  { city:"New York", tz:"America/New_York", abbr:"ET" },
+  { city:"Los Angeles", tz:"America/Los_Angeles", abbr:"PT" },
+  { city:"Chicago", tz:"America/Chicago", abbr:"CT" },
+  { city:"Denver", tz:"America/Denver", abbr:"MT" },
+  { city:"Toronto", tz:"America/Toronto", abbr:"ET" },
+  { city:"Mexico City", tz:"America/Mexico_City", abbr:"CST" },
+  { city:"São Paulo", tz:"America/Sao_Paulo", abbr:"BRT" },
+  { city:"Buenos Aires", tz:"America/Argentina/Buenos_Aires", abbr:"ART" },
+  { city:"London", tz:"Europe/London", abbr:"GMT/BST" },
+  { city:"Paris", tz:"Europe/Paris", abbr:"CET" },
+  { city:"Berlin", tz:"Europe/Berlin", abbr:"CET" },
+  { city:"Amsterdam", tz:"Europe/Amsterdam", abbr:"CET" },
+  { city:"Madrid", tz:"Europe/Madrid", abbr:"CET" },
+  { city:"Rome", tz:"Europe/Rome", abbr:"CET" },
+  { city:"Istanbul", tz:"Europe/Istanbul", abbr:"TRT" },
+  { city:"Moscow", tz:"Europe/Moscow", abbr:"MSK" },
+  { city:"Cairo", tz:"Africa/Cairo", abbr:"EET" },
+  { city:"Johannesburg", tz:"Africa/Johannesburg", abbr:"SAST" },
+  { city:"Nairobi", tz:"Africa/Nairobi", abbr:"EAT" },
+  { city:"Dubai", tz:"Asia/Dubai", abbr:"GST" },
+  { city:"Riyadh", tz:"Asia/Riyadh", abbr:"AST" },
+  { city:"Mumbai", tz:"Asia/Kolkata", abbr:"IST" },
+  { city:"Delhi", tz:"Asia/Kolkata", abbr:"IST" },
+  { city:"Imphal", tz:"Asia/Kolkata", abbr:"IST" },
+  { city:"Kolkata", tz:"Asia/Kolkata", abbr:"IST" },
+  { city:"Dhaka", tz:"Asia/Dhaka", abbr:"BST" },
+  { city:"Bangkok", tz:"Asia/Bangkok", abbr:"ICT" },
+  { city:"Singapore", tz:"Asia/Singapore", abbr:"SGT" },
+  { city:"Hong Kong", tz:"Asia/Hong_Kong", abbr:"HKT" },
+  { city:"Kuala Lumpur", tz:"Asia/Kuala_Lumpur", abbr:"MYT" },
+  { city:"Shanghai", tz:"Asia/Shanghai", abbr:"CST" },
+  { city:"Beijing", tz:"Asia/Shanghai", abbr:"CST" },
+  { city:"Tokyo", tz:"Asia/Tokyo", abbr:"JST" },
+  { city:"Seoul", tz:"Asia/Seoul", abbr:"KST" },
+  { city:"Sydney", tz:"Australia/Sydney", abbr:"AEST" },
+  { city:"Melbourne", tz:"Australia/Melbourne", abbr:"AEST" },
+  { city:"Auckland", tz:"Pacific/Auckland", abbr:"NZST" },
+  { city:"Honolulu", tz:"Pacific/Honolulu", abbr:"HST" },
+];
+
+let cards = [
+  { city:"New York", tz:"America/New_York", abbr:"ET" },
+  { city:"London", tz:"Europe/London", abbr:"GMT/BST" },
+  { city:"Dubai", tz:"Asia/Dubai", abbr:"GST" },
+  { city:"Tokyo", tz:"Asia/Tokyo", abbr:"JST" },
+];
+
+let baseMinutes = getCurrentUtcMinutes();
+let fmt = 12;
+let activeCardIdx = null;
+let pickerHour = 12, pickerMin = 0, pickerAmpm = "AM";
+
+function getCurrentUtcMinutes() {
+  const now = new Date();
+  return now.getUTCHours() * 60 + now.getUTCMinutes();
+}
+
+function getUtcOffset(tz) {
+  const now = new Date();
+  const a = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', hour12: false, hour: '2-digit', minute: '2-digit' }).format(now);
+  const b = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit' }).format(now);
+  const parse = s => { const p = s.split(':'); let h = parseInt(p[0]); const m = parseInt(p[1]); if(h===24)h=0; return h*60+m; };
+  return parse(b) - parse(a);
+}
+
+function getTzMins(tz) {
+  return ((baseMinutes + getUtcOffset(tz)) % 1440 + 1440) % 1440;
+}
+
+function fmtDisplay(mins) {
+  const h24 = Math.floor(((mins % 1440) + 1440) % 1440 / 60);
+  const m = ((mins % 1440) + 1440) % 1440 % 60;
+  const mm = String(m).padStart(2,'0');
+  if (fmt === 24) return { time: String(h24).padStart(2,'0') + ':' + mm, period: '' };
+  const ap = h24 < 12 ? 'AM' : 'PM';
+  const h = h24 % 12 === 0 ? 12 : h24 % 12;
+  return { time: h + ':' + mm, period: ap };
+}
+
+function renderCards() {
+  const c = document.getElementById('cards-container');
+  c.innerHTML = '';
+  cards.forEach((card, i) => {
+    const m = getTzMins(card.tz);
+    const { time, period } = fmtDisplay(m);
+    const isActive = activeCardIdx === i;
+    const div = document.createElement('div');
+    div.className = 'tz-card' + (isActive ? ' active-card' : '');
+    div.onclick = e => { if (!e.target.classList.contains('remove-btn')) openPicker(i); };
+    const now = new Date();
+    const dayStr = new Intl.DateTimeFormat('en-US', { timeZone: card.tz, weekday: 'short', month: 'short', day: 'numeric' }).format(now);
+    div.innerHTML =
+      '<div class="card-top"><div><div class="card-city">' + card.city + '</div>' +
+      '<div class="card-tz">' + card.abbr + '</div></div></div>' +
+      '<div class="card-time">' + time + '<span class="card-period">' + period + '</span></div>' +
+      '<div class="card-day">' + dayStr + '</div>' +
+      (cards.length > 1 ? '<button class="remove-btn" onclick="removeCard(' + i + ')">×</button>' : '');
+    c.appendChild(div);
+  });
+  updateSlider();
+}
+
+function removeCard(i) {
+  cards.splice(i, 1);
+  if (activeCardIdx === i) activeCardIdx = null;
+  else if (activeCardIdx > i) activeCardIdx--;
+  renderCards();
+}
+
+function updateSlider() {
+  const el = document.getElementById('time-slider');
+  el.value = baseMinutes;
+  const pct = (baseMinutes / 1439 * 100).toFixed(2) + '%';
+  el.style.setProperty('--pct', pct);
+  const { time, period } = fmtDisplay(baseMinutes);
+  document.getElementById('slider-label').textContent = time + (period ? ' ' + period : '');
+}
+
+function onSlider(v) {
+  baseMinutes = parseInt(v);
+  renderCards();
+}
+
+function setFormat(f) {
+  fmt = f;
+  document.getElementById('btn12').classList.toggle('active', f === 12);
+  document.getElementById('btn24').classList.toggle('active', f === 24);
+  renderCards();
+}
+
+/* ---- PICKER ---- */
+function openPicker(idx) {
+  activeCardIdx = idx;
+  renderCards();
+  const card = cards[idx];
+  const m = getTzMins(card.tz);
+  const h24 = Math.floor(m / 60);
+  pickerMin = m % 60;
+  if (fmt === 12) {
+    pickerAmpm = h24 < 12 ? 'AM' : 'PM';
+    pickerHour = h24 % 12 === 0 ? 12 : h24 % 12;
+  } else {
+    pickerHour = h24;
+    pickerAmpm = '';
+  }
+  document.getElementById('picker-title').textContent = card.city;
+  buildWheels();
+  document.getElementById('picker-overlay').classList.add('open');
+}
+
+function closePicker() {
+  document.getElementById('picker-overlay').classList.remove('open');
+  activeCardIdx = null;
+  renderCards();
+}
+
+function donePicker() {
+  let h = pickerHour;
+  if (fmt === 12) {
+    if (pickerAmpm === 'AM') h = h % 12;
+    else h = (h % 12) + 12;
+  }
+  const newMins = h * 60 + pickerMin;
+  const card = cards[activeCardIdx];
+  const cardOffset = getUtcOffset(card.tz);
+  baseMinutes = ((newMins - cardOffset) % 1440 + 1440) % 1440;
+  closePicker();
+}
+
+function buildWheels() {
+  const c = document.getElementById('wheels');
+  c.innerHTML = '';
+  const hours = fmt === 12
+    ? Array.from({length:12}, (_,i) => String(i+1))
+    : Array.from({length:24}, (_,i) => String(i).padStart(2,'0'));
+  const mins = Array.from({length:60}, (_,i) => String(i).padStart(2,'0'));
+
+  const hIdx = fmt === 12 ? pickerHour - 1 : pickerHour;
+  const hWheel = makeWheel(hours, hIdx, v => { pickerHour = parseInt(v); });
+  const mWheel = makeWheel(mins, pickerMin, v => { pickerMin = parseInt(v); });
+  const sep = document.createElement('div'); sep.className = 'wheel-sep'; sep.textContent = ':';
+
+  c.appendChild(hWheel);
+  c.appendChild(sep);
+  c.appendChild(mWheel);
+
+  if (fmt === 12) {
+    const apWheel = makeWheel(['AM','PM'], pickerAmpm === 'AM' ? 0 : 1, v => { pickerAmpm = v; });
+    c.appendChild(apWheel);
+  }
+}
+
+function haptic() {
+  if (navigator.vibrate) navigator.vibrate(8);
+}
+
+function makeWheel(items, selIdx, onChange) {
+  const ITEM_H = 44;
+  const CENTER = 220/2 - ITEM_H/2;
+  let curIdx = Math.max(0, Math.min(items.length-1, selIdx));
+
+  const wrap = document.createElement('div'); wrap.className = 'wheel-wrap';
+  const fadeT = document.createElement('div'); fadeT.className = 'wheel-fade-top';
+  const fadeB = document.createElement('div'); fadeB.className = 'wheel-fade-bot';
+  const sel = document.createElement('div'); sel.className = 'wheel-selector';
+  const list = document.createElement('div'); list.className = 'wheel-list';
+
+  items.forEach(item => {
+    const el = document.createElement('div'); el.className = 'wheel-item'; el.textContent = item; list.appendChild(el);
+  });
+
+  let offsetY = -curIdx * ITEM_H;
+
+  function render(animate) {
+    if (animate) { list.style.transition = 'transform 0.22s cubic-bezier(.22,.68,0,1.15)'; setTimeout(()=>list.style.transition='',230); }
+    else list.style.transition = '';
+    list.style.transform = 'translateY(' + (CENTER + offsetY) + 'px)';
+    Array.from(list.children).forEach((el, i) => {
+      const d = Math.abs(i - curIdx);
+      el.style.opacity = d===0?'1':d===1?'0.4':'0.18';
+      el.style.transform = d===0?'scale(1)':'scale(0.87)';
+      el.style.fontWeight = d===0?'400':'300';
+    });
+  }
+
+  function snapTo(idx, animate) {
+    curIdx = Math.max(0, Math.min(items.length-1, idx));
+    offsetY = -curIdx * ITEM_H;
+    render(animate !== false);
+    onChange(items[curIdx]);
+  }
+
+  let startY=0, startOff=0, dragging=false, vel=0, lastY=0, lastT=0;
+
+  function pDown(e) {
+    dragging=true; list.style.transition='';
+    startY = e.touches ? e.touches[0].clientY : e.clientY;
+    startOff = offsetY; vel=0; lastY=startY; lastT=Date.now();
+    e.preventDefault();
+  }
+  function pMove(e) {
+    if (!dragging) return;
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
+    const now = Date.now(); const dt = now-lastT||1;
+    vel = (y-lastY)/dt; lastY=y; lastT=now;
+    offsetY = startOff + (y - startY);
+    list.style.transform = 'translateY(' + (CENTER + offsetY) + 'px)';
+    const newIdx = Math.max(0, Math.min(items.length-1, Math.round(-offsetY/ITEM_H)));
+    if (newIdx !== curIdx) {
+      haptic();
+      curIdx = newIdx;
+    }
+    render(false);
+    e.preventDefault();
+  }
+  function pUp() {
+    if (!dragging) return; dragging=false;
+    let target = Math.round(-offsetY/ITEM_H) - Math.round(vel*5);
+    snapTo(target, true);
+  }
+
+  wrap.addEventListener('touchstart', pDown, {passive:false});
+  wrap.addEventListener('touchmove', pMove, {passive:false});
+  wrap.addEventListener('touchend', pUp);
+  wrap.addEventListener('mousedown', pDown);
+  document.addEventListener('mousemove', e => { if(dragging) pMove(e); });
+  document.addEventListener('mouseup', () => { if(dragging) pUp(); });
+
+  wrap.appendChild(fadeT); wrap.appendChild(sel); wrap.appendChild(list); wrap.appendChild(fadeB);
+  render(false);
+  return wrap;
+}
+
+/* ---- TZ PICKER ---- */
+function openTzPicker() {
+  document.getElementById('tz-search-input').value = '';
+  filterTz('');
+  document.getElementById('tz-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('tz-search-input').focus(), 100);
+}
+function closeTzPicker() { document.getElementById('tz-overlay').classList.remove('open'); }
+
+function filterTz(q) {
+  const list = document.getElementById('tz-list');
+  list.innerHTML = '';
+  const existing = new Set(cards.map(c => c.tz + c.city));
+  const results = ALL_TZ.filter(tz => {
+    if (existing.has(tz.tz + tz.city)) return false;
+    const s = q.toLowerCase();
+    return tz.city.toLowerCase().includes(s) || tz.tz.toLowerCase().includes(s) || tz.abbr.toLowerCase().includes(s);
+  });
+  if (!results.length) {
+    list.innerHTML = '<div style="padding:28px;text-align:center;color:var(--c-muted);font-size:14px;">No results</div>';
+    return;
+  }
+  results.forEach(tz => {
+    const m = getTzMins(tz.tz);
+    const { time, period } = fmtDisplay(m);
+    const row = document.createElement('div'); row.className = 'tz-option';
+    row.innerHTML =
+      '<div><div class="tz-option-name">' + tz.city + '</div>' +
+      '<div class="tz-option-sub">' + tz.tz.replace(/_/g,' ') + ' · ' + tz.abbr + '</div></div>' +
+      '<div class="tz-option-time">' + time + (period?' '+period:'') + '</div>';
+    row.onclick = () => { cards.push({...tz}); closeTzPicker(); renderCards(); };
+    list.appendChild(row);
+  });
+}
+
+renderCards();
+</script>
+</body>
+</html>
